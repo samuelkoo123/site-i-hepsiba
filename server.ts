@@ -2,6 +2,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { GoogleGenAI, Modality } from "@google/genai";
 import Database from "better-sqlite3";
@@ -101,6 +102,47 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+
+  // Health check endpoint
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", time: new Date().toISOString() });
+  });
+
+  // Debug endpoint to check DB and environment
+  app.get("/api/debug", (req, res) => {
+    try {
+      const dbPath = path.resolve(__dirname, "database.sqlite");
+      const dbExists = fs.existsSync(dbPath);
+      const stats = dbExists ? fs.statSync(dbPath) : null;
+      
+      // Test write/read capability
+      let dbTest = "unknown";
+      try {
+        db.exec("CREATE TABLE IF NOT EXISTS _debug_test (id INTEGER PRIMARY KEY, val TEXT)");
+        const insert = db.prepare("INSERT INTO _debug_test (val) VALUES (?)").run("test-" + Date.now());
+        const row = db.prepare("SELECT * FROM _debug_test WHERE id = ?").get(insert.lastInsertRowid) as any;
+        dbTest = row ? `success (id: ${row.id}, val: ${row.val})` : "failed to read back";
+      } catch (e) {
+        dbTest = "failed: " + (e as Error).message;
+      }
+      
+      res.json({
+        status: "ok",
+        env: process.env.NODE_ENV || "development",
+        dbPath,
+        dbExists,
+        dbSize: stats ? stats.size : 0,
+        dbTest,
+        cwd: process.cwd(),
+        dirname: __dirname,
+        nodeVersion: process.version,
+        platform: process.platform,
+        memoryUsage: process.memoryUsage()
+      });
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
+    }
+  });
 
   // API Routes
   app.get("/api/data", (req, res) => {
@@ -350,16 +392,27 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    console.log("[Server] Starting in DEVELOPMENT mode with Vite middleware");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, "dist")));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(__dirname, "dist", "index.html"));
-    });
+    const distPath = path.join(__dirname, "dist");
+    console.log(`[Server] Starting in PRODUCTION mode, serving from: ${distPath}`);
+    
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    } else {
+      console.warn(`[Server] WARNING: 'dist' directory not found at ${distPath}. Did you run 'npm run build'?`);
+      app.get("*", (req, res) => {
+        res.status(404).send("Production build (dist folder) not found. Please run 'npm run build' on the server.");
+      });
+    }
   }
 
   app.listen(PORT, "0.0.0.0", () => {
