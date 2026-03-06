@@ -26,11 +26,24 @@ const Community: React.FC = () => {
     setLoading(true);
     try {
       // 서버 상태 확인
-      const healthRes = await fetch('/api/health').catch(() => null);
-      if (healthRes && healthRes.ok) {
+      const healthUrl = `${window.location.origin}/api/health`;
+      console.log("Checking health at:", healthUrl);
+      
+      const healthRes = await fetch(healthUrl).catch((err) => {
+        console.error("Health check fetch error:", err);
+        return { ok: false, statusText: err.message };
+      });
+
+      if (healthRes && 'ok' in healthRes && healthRes.ok) {
         setServerStatus({ ok: true, msg: '서버 연결됨' });
       } else {
-        setServerStatus({ ok: false, msg: '서버 연결 실패 (API 서버가 실행 중인지 확인하세요)' });
+        const errorMsg = (healthRes && 'status' in healthRes) 
+          ? `서버 오류 (상태: ${healthRes.status})` 
+          : `연결 실패: ${healthRes && 'statusText' in healthRes ? healthRes.statusText : '알 수 없는 오류'}`;
+        setServerStatus({ 
+          ok: false, 
+          msg: `${errorMsg}. API 서버가 실행 중인지, 그리고 /api/health 경로가 유효한지 확인해 주세요.` 
+        });
       }
 
       await refreshDebugInfo();
@@ -46,7 +59,11 @@ const Community: React.FC = () => {
   };
 
   const refreshDebugInfo = async () => {
-    const debugRes = await fetch('/api/debug').catch(() => null);
+    const debugUrl = `${window.location.origin}/api/debug`;
+    const debugRes = await fetch(debugUrl).catch((err) => {
+      console.error("Debug fetch error:", err);
+      return null;
+    });
     if (debugRes && debugRes.ok) {
       setDebugInfo(await debugRes.json());
     }
@@ -158,9 +175,11 @@ const Community: React.FC = () => {
                     <button onClick={() => setShowDebug(false)} className="text-gray-500 hover:text-white">닫기</button>
                   </div>
                 </div>
-                <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+                <pre className="whitespace-pre-wrap break-all">{JSON.stringify(debugInfo, null, 2)}</pre>
                 <div className="mt-2 pt-2 border-t border-gray-700 text-gray-500 italic">
-                  * dbTest가 success가 아니면 서버의 파일 쓰기 권한을 확인하세요.
+                  * dbTest가 success가 아니면 서버의 파일 쓰기 권한을 확인하세요.<br/>
+                  * 현재 접속 주소: {window.location.href}<br/>
+                  * API 주소: {window.location.origin}/api
                 </div>
               </div>
             )}
