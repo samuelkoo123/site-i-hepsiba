@@ -14,6 +14,7 @@ const Community: React.FC = () => {
   const [serverStatus, setServerStatus] = useState<{ ok: boolean, msg: string } | null>(null);
   const [debugInfo, setDebugInfo] = useState<any>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const [isTestingDb, setIsTestingDb] = useState(false);
   
   const [isTestimonyFormOpen, setIsTestimonyFormOpen] = useState(false);
   const [testimonyData, setTestimonyData] = useState({ author: '', title: '', content: '' });
@@ -25,18 +26,14 @@ const Community: React.FC = () => {
     setLoading(true);
     try {
       // 서버 상태 확인
-      const healthRes = await fetch('api/health').catch(() => null);
+      const healthRes = await fetch('/api/health').catch(() => null);
       if (healthRes && healthRes.ok) {
         setServerStatus({ ok: true, msg: '서버 연결됨' });
       } else {
         setServerStatus({ ok: false, msg: '서버 연결 실패 (API 서버가 실행 중인지 확인하세요)' });
       }
 
-      // 디버그 정보 가져오기
-      const debugRes = await fetch('api/debug').catch(() => null);
-      if (debugRes && debugRes.ok) {
-        setDebugInfo(await debugRes.json());
-      }
+      await refreshDebugInfo();
 
       const data = await db.getAll();
       setTestimonies(data.testimonies || []);
@@ -48,6 +45,35 @@ const Community: React.FC = () => {
     setLoading(false);
   };
 
+  const refreshDebugInfo = async () => {
+    const debugRes = await fetch('/api/debug').catch(() => null);
+    if (debugRes && debugRes.ok) {
+      setDebugInfo(await debugRes.json());
+    }
+  };
+
+  const handleTestDbWrite = async () => {
+    setIsTestingDb(true);
+    try {
+      const result = await db.save('guestbook', { 
+        author: '시스템 테스트', 
+        message: `디버그 테스트 메시지 (${new Date().toLocaleString()})`,
+        id: 'debug-test-' + Date.now()
+      });
+      
+      if (result.success) {
+        alert('데이터베이스 쓰기 테스트 성공!');
+        await refreshDebugInfo();
+        loadData();
+      } else {
+        alert(`데이터베이스 쓰기 테스트 실패: ${result.error}`);
+      }
+    } catch (e) {
+      alert(`테스트 중 오류 발생: ${(e as Error).message}`);
+    }
+    setIsTestingDb(false);
+  };
+
   useEffect(() => {
     loadData();
   }, []);
@@ -57,15 +83,15 @@ const Community: React.FC = () => {
     if (!testimonyData.author || !testimonyData.title || !testimonyData.content) return;
     
     setSubmitting(true);
-    const success = await db.save('testimony', testimonyData);
-    if (success) {
+    const result = await db.save('testimony', testimonyData);
+    if (result.success) {
       alert('은혜로운 간증이 등록되었습니다.');
       setTestimonyData({ author: '', title: '', content: '' });
       setIsTestimonyFormOpen(false);
       // 즉시 다시 로드
       loadData();
     } else {
-      alert('등록 중 오류가 발생했습니다.');
+      alert(`등록 중 오류가 발생했습니다: ${result.error || '알 수 없는 오류'}`);
     }
     setSubmitting(false);
   };
@@ -75,15 +101,15 @@ const Community: React.FC = () => {
     if (!guestbookName || !guestbookMsg) return;
     
     setSubmitting(true);
-    const success = await db.save('guestbook', { author: guestbookName, message: guestbookMsg });
-    if (success) {
+    const result = await db.save('guestbook', { author: guestbookName, message: guestbookMsg });
+    if (result.success) {
       alert('방명록이 등록되었습니다.');
       setGuestbookName('');
       setGuestbookMsg('');
       // 즉시 다시 로드
       loadData();
     } else {
-      alert('등록 중 오류가 발생했습니다.');
+      alert(`등록 중 오류가 발생했습니다: ${result.error || '알 수 없는 오류'}`);
     }
     setSubmitting(false);
   };
@@ -91,10 +117,12 @@ const Community: React.FC = () => {
   const handleInquirySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    const success = await db.save('inquiry', inquiryData);
-    if (success) {
+    const result = await db.save('inquiry', inquiryData);
+    if (result.success) {
       alert('문의사항이 관리자 탭으로 전송되었습니다.');
       setInquiryData({ name: '', email: '', subject: '', message: '' });
+    } else {
+      alert(`등록 중 오류가 발생했습니다: ${result.error || '알 수 없는 오류'}`);
     }
     setSubmitting(false);
   };
@@ -119,7 +147,16 @@ const Community: React.FC = () => {
               <div className="mt-4 p-4 bg-gray-900 text-green-400 text-left rounded-xl text-xs font-mono max-w-full overflow-auto shadow-2xl border border-gray-700">
                 <div className="flex justify-between items-center mb-2 border-bottom border-gray-700 pb-1">
                   <span className="font-bold text-white">서버 진단 정보</span>
-                  <button onClick={() => setShowDebug(false)} className="text-gray-500 hover:text-white">닫기</button>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleTestDbWrite} 
+                      disabled={isTestingDb}
+                      className="bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {isTestingDb ? '테스트 중...' : '쓰기 테스트 실행'}
+                    </button>
+                    <button onClick={() => setShowDebug(false)} className="text-gray-500 hover:text-white">닫기</button>
+                  </div>
                 </div>
                 <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
                 <div className="mt-2 pt-2 border-t border-gray-700 text-gray-500 italic">
