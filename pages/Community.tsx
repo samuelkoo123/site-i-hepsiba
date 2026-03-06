@@ -11,6 +11,9 @@ const Community: React.FC = () => {
   
   const [testimonies, setTestimonies] = useState<Testimony[]>([]);
   const [guestbook, setGuestbook] = useState<GuestbookEntry[]>([]);
+  const [serverStatus, setServerStatus] = useState<{ ok: boolean, msg: string } | null>(null);
+  const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [showDebug, setShowDebug] = useState(false);
   
   const [isTestimonyFormOpen, setIsTestimonyFormOpen] = useState(false);
   const [testimonyData, setTestimonyData] = useState({ author: '', title: '', content: '' });
@@ -21,11 +24,26 @@ const Community: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
+      // 서버 상태 확인
+      const healthRes = await fetch('api/health').catch(() => null);
+      if (healthRes && healthRes.ok) {
+        setServerStatus({ ok: true, msg: '서버 연결됨' });
+      } else {
+        setServerStatus({ ok: false, msg: '서버 연결 실패 (API 서버가 실행 중인지 확인하세요)' });
+      }
+
+      // 디버그 정보 가져오기
+      const debugRes = await fetch('api/debug').catch(() => null);
+      if (debugRes && debugRes.ok) {
+        setDebugInfo(await debugRes.json());
+      }
+
       const data = await db.getAll();
-      setTestimonies(data.testimonies);
-      setGuestbook(data.guestbook);
+      setTestimonies(data.testimonies || []);
+      setGuestbook(data.guestbook || []);
     } catch (error) {
       console.error("데이터 로드 중 오류:", error);
+      setServerStatus({ ok: false, msg: '데이터 로드 중 오류 발생' });
     }
     setLoading(false);
   };
@@ -86,7 +104,30 @@ const Community: React.FC = () => {
       <div className="max-w-4xl mx-auto px-4">
         <header className="text-center mb-16">
           <h1 className="text-4xl font-bold text-gray-900 serif mb-4">나눔 광장</h1>
-          <p className="text-gray-500"></p>
+          <div className="flex flex-col items-center gap-2">
+            {serverStatus && (
+              <div 
+                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium cursor-pointer ${serverStatus.ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
+                onClick={() => setShowDebug(!showDebug)}
+              >
+                <span className={`w-2 h-2 rounded-full mr-2 ${serverStatus.ok ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></span>
+                {serverStatus.msg} (클릭하여 상세 정보 확인)
+              </div>
+            )}
+            
+            {showDebug && debugInfo && (
+              <div className="mt-4 p-4 bg-gray-900 text-green-400 text-left rounded-xl text-xs font-mono max-w-full overflow-auto shadow-2xl border border-gray-700">
+                <div className="flex justify-between items-center mb-2 border-bottom border-gray-700 pb-1">
+                  <span className="font-bold text-white">서버 진단 정보</span>
+                  <button onClick={() => setShowDebug(false)} className="text-gray-500 hover:text-white">닫기</button>
+                </div>
+                <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+                <div className="mt-2 pt-2 border-t border-gray-700 text-gray-500 italic">
+                  * dbTest가 success가 아니면 서버의 파일 쓰기 권한을 확인하세요.
+                </div>
+              </div>
+            )}
+          </div>
         </header>
 
         <div className="flex justify-center mb-12 bg-white p-2 rounded-2xl shadow-sm border border-orange-50">
