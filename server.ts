@@ -12,7 +12,19 @@ const __dirname = path.dirname(__filename);
 
 // SQLite Setup
 const dbPath = path.resolve(__dirname, "database.sqlite");
+const dbDir = path.dirname(dbPath);
+
+// Ensure directory exists (though usually it's the root)
+if (!fs.existsSync(dbDir)) {
+  try {
+    fs.mkdirSync(dbDir, { recursive: true });
+  } catch (err) {
+    console.error(`[DB] Failed to create database directory: ${dbDir}`, err);
+  }
+}
+
 console.log(`[DB] Initializing database at: ${dbPath}`);
+console.log(`[DB] Directory permissions: ${fs.accessSync(dbDir, fs.constants.W_OK) === undefined ? 'Writable' : 'Not Writable'}`);
 
 let db: Database.Database;
 try {
@@ -103,6 +115,12 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Request logging middleware
+  app.use((req, res, next) => {
+    console.log(`[Server] ${req.method} ${req.url}`);
+    next();
+  });
+
   // Health check endpoint
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", time: new Date().toISOString() });
@@ -175,7 +193,13 @@ async function startServer() {
   app.post("/api/save", (req, res) => {
     const { dbCategory, ...data } = req.body;
     
+    console.log(`[API] Save request for category: ${dbCategory}`, data);
+    
     try {
+      if (!req.body || Object.keys(req.body).length === 0) {
+        return res.status(400).json({ error: "Empty request body" });
+      }
+
       let table = "";
       const id = data.id || Math.random().toString(36).substr(2, 9);
       const date = data.date || new Date().toISOString().split('T')[0];
@@ -210,11 +234,17 @@ async function startServer() {
         console.log(`[API] Saved to ${table}: ${id}`);
         res.json({ success: true });
       } else {
-        res.status(400).json({ error: "Invalid category" });
+        console.warn(`[API] Invalid category: ${dbCategory}`);
+        res.status(400).json({ error: `Invalid category: ${dbCategory}` });
       }
     } catch (error) {
-      console.error("[API] Save Error:", error);
-      res.status(500).json({ error: "Failed to save data to SQLite" });
+      const err = error as Error;
+      console.error("[API] Save Error:", err);
+      res.status(500).json({ 
+        error: "Failed to save data to SQLite", 
+        details: err.message,
+        stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+      });
     }
   });
 

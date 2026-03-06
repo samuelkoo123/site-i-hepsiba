@@ -10,7 +10,7 @@ export const db = {
         ...payload
       };
 
-      const response = await fetch('/api/save', {
+      const response = await fetch(`${window.location.origin}/api/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dbCategory: type, ...data })
@@ -37,7 +37,7 @@ export const db = {
     calendarEvents: CalendarEvent[]
   }> {
     try {
-      const response = await fetch('/api/data');
+      const response = await fetch(`${window.location.origin}/api/data`);
       if (!response.ok) throw new Error('Failed to fetch data');
       return await response.json();
     } catch (e) {
@@ -55,7 +55,7 @@ export const db = {
 
   async delete(type: string, id: string): Promise<boolean> {
     try {
-      const response = await fetch('/api/delete', {
+      const response = await fetch(`${window.location.origin}/api/delete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, type })
